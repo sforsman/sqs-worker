@@ -13,8 +13,11 @@
         }
     ],
     "require": {
-        "php": ">=5.5.0",
-        "aws/aws-sdk-php": "2.*"
+        "php": ">=5.5.0"
+    },
+    "suggest": {
+      "aws/aws-sdk-php": "Allows using SQS queues",
+      "php-amqplib/php-amqplib": "Allows using AMPQ based queues (such as RabbitMQ)"
     },
     "autoload": {
         "psr-4": {"SQSWorker\\": "src/SQSWorker"}
