@@ -4,29 +4,29 @@
 
 namespace SQSWorker;
 
-use Aws\Sqs\SqsClient;
-
 class Worker
 {
   protected $queue_url;
   protected $client;
   protected $executors;
+  protected $had_job;
 
-  public function __construct(SqsClient $client, $queue_url)
+  public function __construct(AbstractQueue $client)
   {
     $this->client = $client;
-    $this->queue_url = $queue_url;
-    $this->executors = [];
+    $this->client->setCallback([$this, 'processResult']);
     echo "Worker waking up\n";
   }
 
   public function teach($name, $callback)
   {
-    if(!is_callable($callback))
+    if(!is_callable($callback)) {
       throw new \Exception("Invalid callback");
+    }
 
-    if(isset($this->executors[$name]))
+    if(isset($this->executors[$name])) {
       throw new \Exception("Already know how to work with {$name}");
+    }
 
     $this->executors[$name] = $callback;
     echo "-> Learned {$name}\n";
@@ -35,109 +35,88 @@ class Worker
   // Main loop
   public function work()
   {
-    if(!$this->executors)
+    if(!$this->executors) {
       throw new \Exception("I'd rather be educated first");
+    }
 
-    $hadJob = true;
+    $this->had_job = true;
 
     // Main loop
-    while(true)
-    {
+    while($this->client->loop()) {
       try { 
-        if($hadJob)
-        {
+        if($this->had_job) {
           echo "Waiting for work\n";
-          $hadJob = false;
+          $this->had_job = false;
         }
-        $result = $this->client->receiveMessage(array(
-          'QueueUrl'            => $this->queue_url,
-          // One at a time
-          'MaxNumberOfMessages' => 1,
-          // Long poll
-          'WaitTimeSeconds'     => 20,
-        ));
-        // Meaning long poll timed out
-        if(!($result instanceof \Guzzle\Service\Resource\Model))
-        {
-          // Crashing intentionally
-          throw new \Exception("Received something very unexpected");
-        }
-        elseif(!isset($result['Messages']) or !is_array($result['Messages']) or !count($result['Messages']))
-        {
-          // Long poll timed out (...most likely... or at least hopefully)
-          // echo "-> Timeout, polling again\n";
-          continue;
-        }
+        // Expected to block
+        $this->client->receive();        
       } catch (\Exception $e) {
         // Just rethrow to see what comes
         file_put_contents("php://stderr", "-> FATAL: Message receive failed, worker dying on ".get_class($e). ": ".$e->getMessage()."\n");
         exit(1);
       }
+    }
+  }
+  
+  public function processResult($result)
+  {
+    $this->had_job = true;
+    
+    if(count($result) === 0) {
+      // Silently skipping (meant for supporting long poll timeouts)
+      return;
+    }
+    // Do something with the message
+    $body = $result['body'];
+    $id   = $result['id'];
+    $tag  = $result['tag'];
 
-      $hadJob = true;
+    echo "-> Picked up message: {$id}\n";
 
-      // Looping in case we one day change MaxNumberOfMessages
-      foreach($result['Messages'] as $message) {
-        // Do something with the message
-        $body = $message['Body'];
-        $handle = $message['ReceiptHandle'];
+    $data = json_decode($body, true);
+    if(!$data) {
+      file_put_contents("php://stderr", "-> ERROR: Invalid data, json_decode failed\n");
+      continue;
+    }
 
-        echo "-> Picked up message: {$message['MessageId']}\n";
+    if(!isset($data['Function'])) {
+      file_put_contents("php://stderr", "-> ERROR: Invalid data, no function defined\n");
+      continue;
+    }
 
-        // Delete straight away to avoid retry. If execution fails we have other ways
-        try {
-          $this->client->deleteMessage([
-              'QueueUrl'      => $this->queue_url,
-              'ReceiptHandle' => $handle,
-          ]);
-        } catch(\Exception $e) {
-          file_put_contents("php://stderr", "-> FATAL: Message deletion failed, worker dying on ".get_class($e). ": ".$e->getMessage()."\n");
-          exit(2);
-        }
+    if(!isset($this->executors[$data['Function']])) {
+      file_put_contents("php://stderr", "-> ERROR: I don't know how to handle {$data['Function']}\n");
+      continue;
+    }
 
-        $data = json_decode($body, true);
-        if(!$data)
-        {
-          file_put_contents("php://stderr", "-> ERROR: Invalid data, json_decode failed\n");
-          continue;
-        }
+    $callable = $this->executors[$data['Function']];
+    if(!is_callable($callable)) {
+      file_put_contents("php://stderr", "-> ERROR: Function is not callable (anymore)\n");
+      continue;
+    }
 
-        if(!isset($data['Function']))
-        {
-          file_put_contents("php://stderr", "-> ERROR: Invalid data, no function defined\n");
-          continue;
-        }
+    $parms = isset($data['Parameters']) ? $data['Parameters'] : [];
 
-        if(!isset($this->executors[$data['Function']]))
-        {
-          file_put_contents("php://stderr", "-> ERROR: I don't know how to handle {$data['Function']}");
-          continue;
-        }
+    if(!is_array($parms)) {
+      file_put_contents("php://stderr", "-> ERROR: Parameters must be an array\n");
+      continue;
+    }
 
-        $callable = $this->executors[$data['Function']];
-        if(!is_callable($callable))
-        {
-          file_put_contents("php://stderr", "-> ERROR: Function is not callable (anymore)\n");
-          continue;
-        }
-
-        $parms = isset($data['Parameters']) ? $data['Parameters'] : [];
-
-        if(!is_array($parms))
-        {
-          file_put_contents("php://stderr", "-> ERROR: Parameters must be an array\n");
-          continue;
-        }
-
-        // We don't care about the return value
-        echo "-> Executing {$data['Function']}\n";
-        try {
-          unset($data['Function'], $data['Parameters']);
-          call_user_func($callable, $parms, $data);
-        } catch(\Exception $e) {
-          file_put_contents("php://stderr", "-> ERROR: Executor threw an ".get_class($e). ": ".$e->getMessage()."\n");
-        }
-      }
+    // We don't care about the return value
+    echo "-> Executing {$data['Function']}\n";
+    try {
+      unset($data['Function'], $data['Parameters']);
+      call_user_func($callable, $parms, $data);
+    } catch(\Exception $e) {
+      file_put_contents("php://stderr", "-> ERROR: Executor threw an ".get_class($e). ": ".$e->getMessage()."\n");
+    }
+    
+    // Currently we ack even if the executor crashes
+    try {
+      $this->client->ack($tag);
+    } catch(\Exception $e) {
+      file_put_contents("php://stderr", "-> FATAL: Message deletion failed, worker dying on ".get_class($e). ": ".$e->getMessage()."\n");
+      exit(2);
     }
   }
 }
