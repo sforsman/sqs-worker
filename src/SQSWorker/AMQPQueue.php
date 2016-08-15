@@ -10,7 +10,7 @@ class AMQPQueue extends AbstractQueue
   protected $connection;
   protected $queue;
   protected $channel;
-  
+
   public function __construct(array $args = [])
   {
     $keys = ['connection', 'queue'];
@@ -28,7 +28,7 @@ class AMQPQueue extends AbstractQueue
     $this->connection = $args['connection'];
     $this->queue      = $args['queue'];
     $this->channel    = $this->connection->channel();
-    
+
     $this->channel->queue_declare($this->queue, false, true, false, false);
     $this->channel->basic_qos(null, 1, null);
     $this->channel->basic_consume($this->queue, '', false, false, false, false, [$this, 'processMessage']);
@@ -43,7 +43,7 @@ class AMQPQueue extends AbstractQueue
   {
     $this->channel->wait();
   }
-  
+
   public function processMessage($msg)
   {
     $this->respond([
@@ -52,18 +52,23 @@ class AMQPQueue extends AbstractQueue
       'body' => $msg->body,
     ]);
   }
-  
+
   public function ack($tag)
   {
     $this->channel->basic_ack($tag);
   }
-  
+
+  public function nack($tag)
+  {
+    $this->channel->basic_nack($tag);
+  }
+
   public function close()
   {
     $this->channel->close();
     $this->connection->close();
   }
-  
+
   public function __destruct()
   {
     $this->close();

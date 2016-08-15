@@ -9,7 +9,7 @@ class SQSQueue extends AbstractQueue
 {
   protected $client;
   protected $queue_url;
-  
+
   public function __construct(array $args = [])
   {
     $keys = ['client', 'queue_url'];
@@ -65,9 +65,12 @@ class SQSQueue extends AbstractQueue
       'ReceiptHandle' => $tag,
     ]);
   }
-  
+
+  public function nack($tag)
+  {
+  }
+
   public function close()
   {
-    
   }
 }

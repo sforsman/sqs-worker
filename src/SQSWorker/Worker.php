@@ -76,30 +76,35 @@ class Worker
     $data = json_decode($body, true);
     if(!$data) {
       file_put_contents("php://stderr", "-> ERROR: Invalid data, json_decode failed\n");
-      continue;
+      $this->client->nack($tag);
+      return;
     }
 
     if(!isset($data['Function'])) {
       file_put_contents("php://stderr", "-> ERROR: Invalid data, no function defined\n");
+      $this->client->nack($tag);
       continue;
     }
 
     if(!isset($this->executors[$data['Function']])) {
       file_put_contents("php://stderr", "-> ERROR: I don't know how to handle {$data['Function']}\n");
-      continue;
+      $this->client->nack($tag);
+      return;
     }
 
     $callable = $this->executors[$data['Function']];
     if(!is_callable($callable)) {
       file_put_contents("php://stderr", "-> ERROR: Function is not callable (anymore)\n");
-      continue;
+      $this->client->nack($tag);
+      return;
     }
 
     $parms = isset($data['Parameters']) ? $data['Parameters'] : [];
 
     if(!is_array($parms)) {
       file_put_contents("php://stderr", "-> ERROR: Parameters must be an array\n");
-      continue;
+      $this->client->nack($tag);
+      return;
     }
 
     // We don't care about the return value

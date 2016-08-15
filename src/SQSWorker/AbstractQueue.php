@@ -10,6 +10,7 @@ abstract class AbstractQueue
   abstract public function loop();
   abstract public function receive();
   abstract public function ack($tag);
+  abstract public function nack($tag);
   abstract public function close();
   
   public function setCallback($callback)
