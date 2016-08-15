@@ -1,50 +1,6 @@
-SQS Worker that executes PW jobs
-================================
+Simple MQ based worker
+======================
 
-To use this you need to have these in your composer.json
+Install with `composer require sforsman/SQSWorker`.
 
-```json
-{
-  "require": {
-    "sforsman/SQSWorker": "dev-master"
-  },
-  "repositories": [
-    {
-      "type": "vcs",
-      "url": "https://github.com/sforsman/SQSWorker"
-    }
-  ]
-}
-```
-
-Also you need to define the worker in your Procfile. Here's an example with the default web process 
-type as well.
-
-```
-web: vendor/bin/heroku-php-apache2
-worker: php vendor/bin/sqs_worker.php
-```
-
-Then you need these new environment values
-
-```bash
-deis config:set AWS_REGION=<region> AWS_ACCESS_KEY_ID=<access_key> AWS_SECRET_ACCESS_KEY=<secret>
-```
-
-And finally, but most importantly, you need to define a custom buildpack for your app:
-
-```bash
-deis create <myapp> -b https://github.com/sforsman/heroku-buildpack-php.git
-```
-
-Or if the app is already running
-
-```bash
-deis config:set BUILDPACK_URL=https://github.com/sforsman/heroku-buildpack-php.git
-```
-
-If you added workers for the first time, bring them up with
-
-```bash
-deis scale worker=1
-```
+Note: v0.2 introduces breaking changes.
