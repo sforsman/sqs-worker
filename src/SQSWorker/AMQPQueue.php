@@ -47,7 +47,7 @@ class AMQPQueue extends AbstractQueue
   public function processMessage($msg)
   {
     $this->respond([
-      'id'   => $msg->delivery_info['consumer_tag'],
+      'id'   => $msg->delivery_info['delivery_tag'],
       'tag'  => $msg->delivery_info['delivery_tag'],
       'body' => $msg->body,
     ]);
