@@ -5,6 +5,7 @@
 require 'vendor/autoload.php';
 
 use SQSWorker\Worker;
+use SQSWorker\SQSQueue;
 use Aws\Sqs\SqsClient;
 
 // TODO: Add monolog stuff, then disable these
@@ -35,7 +36,8 @@ $queue = $client->createQueue([
 
 $queueUrl = $queue->get('QueueUrl');
 
-$worker = new Worker($client, $queueUrl);
+$queue = new SQSQueue(['client'=>$client, 'queue_url'=>$queueUrl]);
+$worker = new Worker($queue);
 
 // Just a dummy job
 $worker->teach("test", function($parameters = []) {
