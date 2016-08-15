@@ -68,6 +68,7 @@ class SQSQueue extends AbstractQueue
 
   public function nack($tag)
   {
+    $this->ack($tag);
   }
 
   public function close()
