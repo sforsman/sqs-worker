@@ -83,7 +83,7 @@ class Worker
     if(!isset($data['Function'])) {
       file_put_contents("php://stderr", "-> ERROR: Invalid data, no function defined\n");
       $this->client->nack($tag);
-      continue;
+      return;
     }
 
     if(!isset($this->executors[$data['Function']])) {
